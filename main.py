@@ -40,6 +40,14 @@ def out_info(msg, end='\n'):
     print(colored(msg, 'green'), end=end)
 
 
+def print_todos(todos):
+    if not todos:
+        out_warn("（暂无待办事项）")
+        return
+    for i, item in enumerate(todos, 1):
+        print(format_item(i, item))
+
+
 # ----------------------------------------------------------------------
 # 数据读写
 # ----------------------------------------------------------------------
@@ -153,11 +161,7 @@ def format_item(index, item):
 def view_todos(todos):
     """查看所有待办事项，任意键返回。"""
     out_info("\n=== 待办事项列表 ===")
-    if not todos:
-        out_warn("（暂无待办事项）")
-    else:
-        for i, item in enumerate(todos, 1):
-            print(format_item(i, item))
+    print_todos(todos)
     out_info("\n按回车键返回主菜单...", end='')
     input()
 
@@ -184,11 +188,7 @@ def add_todo(todos):
 def delete_todo(todos):
     """删除一条待办事项。"""
     out_info("\n--- 删除待办事项 ---")
-    if not todos:
-        out_warn("（暂无待办事项）")
-        return
-    for i, item in enumerate(todos, 1):
-        print(format_item(i, item))
+    print_todos(todos)
     idx = prompt_index(len(todos))
     removed = todos.pop(idx - 1)
     save_data(todos)
@@ -198,11 +198,7 @@ def delete_todo(todos):
 def modify_todo(todos):
     """更改一条待办事项的字段内容。"""
     out_info("\n--- 更改待办事项 ---")
-    if not todos:
-        out_warn("（暂无待办事项）")
-        return
-    for i, item in enumerate(todos, 1):
-        print(format_item(i, item))
+    print_todos(todos)
     idx = prompt_index(len(todos))
     item = todos[idx - 1]
 
