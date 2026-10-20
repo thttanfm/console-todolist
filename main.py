@@ -12,6 +12,8 @@
 
 import json
 import os
+import re
+from datetime import datetime, date
 
 # ----------------------------------------------------------------------
 # 配置区
@@ -19,11 +21,12 @@ import os
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
 
-# 待办事项的字段定义：(字段名, 显示名称, 是否必填)
+# 待办事项的字段定义：(字段名, 显示名称, 字段类型, 是否必填)
+# 类型 "text" 为普通文本，类型 "date" 为日期（存储为 {"year", "month", "day"}）
 # 想要新增字段时，只需在这里添加一行，展示 / 添加 / 修改逻辑会自动生效。
 ITEM_FIELDS = [
-    ("name", "名称", True),
-    ("due_date", "截止日期", True),
+    ("name", "名称", "text", True),
+    ("due_date", "截止日期", "date", True),
 ]
 
 
@@ -79,11 +82,58 @@ def prompt_index(count):
         print("无效编号，请重新输入。")
 
 
+def format_date(d):
+    """把存储的日期（字典）格式化为 yyyy-mm-dd 字符串；兼容旧格式的字符串。"""
+    if isinstance(d, dict):
+        return f"{d.get('year', 0):04d}-{d.get('month', 0):02d}-{d.get('day', 0):02d}"
+    return str(d) if d else ""
+
+def prompt_date(label="截止日期", current=None):
+    """交互式读取日期，严格校验 yyyy-mm-dd，并对过去日期发出警告。
+
+    current 为已有日期（修改时传入），直接回车可保留原值。
+    返回 {"year": int, "month": int, "day": int}。
+    """
+    # 兼容旧数据（字符串格式）——无法回显则视为无当前值
+    if current is not None and not isinstance(current, dict):
+        current = None
+
+    while True:
+        prompt = f"请输入{label}（格式 yyyy-mm-dd）"
+        if current:
+            prompt += f"，当前：{format_date(current)}，直接回车保留原值"
+        value = input(prompt + "：").strip()
+
+        if not value and current:
+            return current
+
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            print("格式错误，请严格按 yyyy-mm-dd 输入，例如 2025-10-20。")
+            continue
+
+        try:
+            dt = datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError:
+            print("日期无效（月份或日期超出范围），请重新输入。")
+            continue
+
+        if dt < date.today():
+            ans = input(f"警告：{value} 已经过去，确定要提交吗？(y/n) > ").strip().lower()
+            if ans not in ("y", "yes"):
+                continue
+
+        return {"year": dt.year, "month": dt.month, "day": dt.day}
+
+
 def format_item(index, item):
     """把一条待办事项格式化为一行文本。"""
-    parts = [f"{label}：{item.get(field, '')}" for field, label, _ in ITEM_FIELDS]
+    parts = []
+    for field, label, ftype, _ in ITEM_FIELDS:
+        if ftype == "date":
+            parts.append(f"{label}：{format_date(item.get(field))}")
+        else:
+            parts.append(f"{label}：{item.get(field, '')}")
     return f"[{index}] " + " | ".join(parts)
-
 
 # ----------------------------------------------------------------------
 # 具体操作
@@ -104,13 +154,16 @@ def add_todo(todos):
     """添加一条待办事项。"""
     print("\n--- 添加待办事项 ---")
     item = {}
-    for field, label, required in ITEM_FIELDS:
-        while True:
-            value = input(f"请输入{label}：").strip()
-            if value or not required:
-                item[field] = value
-                break
-            print(f"{label}不能为空。")
+    for field, label, ftype, required in ITEM_FIELDS:
+        if ftype == "date":
+            item[field] = prompt_date(label=label)
+        else:
+            while True:
+                value = input(f"请输入{label}：").strip()
+                if value or not required:
+                    item[field] = value
+                    break
+                print(f"{label}不能为空。")
     todos.append(item)
     save_data(todos)
     print("已添加。")
@@ -141,14 +194,17 @@ def modify_todo(todos):
     idx = prompt_index(len(todos))
     item = todos[idx - 1]
 
-    for field, label, required in ITEM_FIELDS:
-        current = item.get(field, "")
-        while True:
-            value = input(f"新的{label}（当前：{current}，直接回车保留原值）：").strip()
-            if not value:
+    for field, label, ftype, required in ITEM_FIELDS:
+        if ftype == "date":
+            item[field] = prompt_date(label=label, current=item.get(field))
+        else:
+            current = item.get(field, "")
+            while True:
+                value = input(f"新的{label}（当前：{current}，直接回车保留原值）：").strip()
+                if not value:
+                    break
+                item[field] = value
                 break
-            item[field] = value
-            break
     save_data(todos)
     print("已更新。")
 
