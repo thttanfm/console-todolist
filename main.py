@@ -13,6 +13,7 @@
 import json
 import os
 import re
+from termcolor import colored
 from datetime import datetime, date
 
 # ----------------------------------------------------------------------
@@ -29,6 +30,15 @@ ITEM_FIELDS = [
     ("due_date", "截止日期", "date", True),
 ]
 
+def out_error(msg, end='\n'):
+    print(colored(msg, 'red'), end=end)
+
+def out_warn(msg, end='\n'):
+    print(colored(msg, 'yellow'), end=end)
+
+def out_info(msg, end='\n'):
+    print(colored(msg, 'green'), end=end)
+
 
 # ----------------------------------------------------------------------
 # 数据读写
@@ -43,7 +53,7 @@ def load_data():
             data = json.load(f)
         return data if isinstance(data, list) else []
     except (json.JSONDecodeError, OSError):
-        print("警告：data.json 读取失败，将以空列表开始。")
+        out_warn("警告：data.json 读取失败，将以空列表开始。")
         return []
 
 
@@ -70,7 +80,7 @@ def prompt_choice(options):
         raw = input("请选择 > ").strip().lower()
         if raw in keys:
             return raw
-        print(f"无效选项，请输入 {'/'.join(keys)} 之一。")
+        out_error(f"无效选项，请输入 {'/'.join(keys)} 之一。")
 
 
 def prompt_index(count):
@@ -79,7 +89,7 @@ def prompt_index(count):
         raw = input(f"请输入条目编号 (1-{count}) > ").strip()
         if raw.isdigit() and 1 <= int(raw) <= count:
             return int(raw)
-        print("无效编号，请重新输入。")
+        out_error("无效编号，请重新输入。")
 
 
 def format_date(d):
@@ -108,17 +118,18 @@ def prompt_date(label="截止日期", current=None):
             return current
 
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-            print("格式错误，请严格按 yyyy-mm-dd 输入，例如 2025-10-20。")
+            out_info("格式错误，请严格按 yyyy-mm-dd 输入，例如 2025-10-20。")
             continue
 
         try:
             dt = datetime.strptime(value, "%Y-%m-%d").date()
         except ValueError:
-            print("日期无效（月份或日期超出范围），请重新输入。")
+            out_info("日期无效（月份或日期超出范围），请重新输入。")
             continue
 
         if dt < date.today():
-            ans = input(f"警告：{value} 已经过去，确定要提交吗？(y/n) > ").strip().lower()
+            out_warn(f"警告：{value} 已经过去，确定要提交吗？(y/n) > ", end='')
+            ans = input().strip().lower()
             if ans not in ("y", "yes"):
                 continue
 
@@ -141,18 +152,19 @@ def format_item(index, item):
 
 def view_todos(todos):
     """查看所有待办事项，任意键返回。"""
-    print("\n=== 待办事项列表 ===")
+    out_info("\n=== 待办事项列表 ===")
     if not todos:
-        print("（暂无待办事项）")
+        out_warn("（暂无待办事项）")
     else:
         for i, item in enumerate(todos, 1):
             print(format_item(i, item))
-    input("\n按回车键返回主菜单...")
+    out_info("\n按回车键返回主菜单...", end='')
+    input()
 
 
 def add_todo(todos):
     """添加一条待办事项。"""
-    print("\n--- 添加待办事项 ---")
+    out_info("\n--- 添加待办事项 ---")
     item = {}
     for field, label, ftype, required in ITEM_FIELDS:
         if ftype == "date":
@@ -163,31 +175,31 @@ def add_todo(todos):
                 if value or not required:
                     item[field] = value
                     break
-                print(f"{label}不能为空。")
+                out_warn(f"{label}不能为空。")
     todos.append(item)
     save_data(todos)
-    print("已添加。")
+    out_info("已添加。")
 
 
 def delete_todo(todos):
     """删除一条待办事项。"""
-    print("\n--- 删除待办事项 ---")
+    out_info("\n--- 删除待办事项 ---")
     if not todos:
-        print("（暂无待办事项）")
+        out_warn("（暂无待办事项）")
         return
     for i, item in enumerate(todos, 1):
         print(format_item(i, item))
     idx = prompt_index(len(todos))
     removed = todos.pop(idx - 1)
     save_data(todos)
-    print(f"已删除：{removed.get('name', '')}")
+    out_info(f"已删除：{removed.get('name', '')}")
 
 
 def modify_todo(todos):
     """更改一条待办事项的字段内容。"""
-    print("\n--- 更改待办事项 ---")
+    out_info("\n--- 更改待办事项 ---")
     if not todos:
-        print("（暂无待办事项）")
+        out_warn("（暂无待办事项）")
         return
     for i, item in enumerate(todos, 1):
         print(format_item(i, item))
@@ -200,13 +212,14 @@ def modify_todo(todos):
         else:
             current = item.get(field, "")
             while True:
-                value = input(f"新的{label}（当前：{current}，直接回车保留原值）：").strip()
+                out_info(f"新的{label}（当前：{current}，直接回车保留原值）：", end='')
+                value = input().strip()
                 if not value:
                     break
                 item[field] = value
                 break
     save_data(todos)
-    print("已更新。")
+    out_info("已更新。")
 
 
 # ----------------------------------------------------------------------
@@ -222,7 +235,7 @@ def modify_menu(todos):
         ("d", "返回主菜单"),
     ]
     while True:
-        print("\n=== 修改待办事项 ===")
+        out_info("\n=== 修改待办事项 ===")
         show_menu(options)
         choice = prompt_choice(options)
         if choice == "a":
@@ -243,7 +256,7 @@ def main_menu(todos):
         ("c", "退出"),
     ]
     while True:
-        print("\n=== 待办事项 ===")
+        out_info("\n=== 待办事项 ===")
         show_menu(options)
         choice = prompt_choice(options)
         if choice == "a":
@@ -251,7 +264,7 @@ def main_menu(todos):
         elif choice == "b":
             modify_menu(todos)
         elif choice == "c":
-            print("再见！")
+            out_info("再见！")
             return
 
 
