@@ -22,6 +22,21 @@ from datetime import datetime, date
 # ----------------------------------------------------------------------
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.json")
+SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings.json")
+
+# 排序模式
+SORT_NONE = "none"
+SORT_ASC = "asc"
+SORT_DESC = "desc"
+SORT_LABELS = {
+    SORT_NONE: "不排序",
+    SORT_ASC: "按时间升序（越早越靠前）",
+    SORT_DESC: "按时间降序（越晚越靠前）",
+}
+DEFAULT_SETTINGS = {"sort": SORT_NONE}
+
+# 模块级设置，由 main() 加载后填充
+SETTINGS = dict(DEFAULT_SETTINGS)
 
 # 待办事项的字段定义：(字段名, 显示名称, 字段类型, 是否必填)
 # 类型 "text" 为普通文本，类型 "date" 为日期（存储为 {"year", "month", "day"}）
@@ -42,10 +57,11 @@ def out_info(msg, end='\n'):
 
 
 def print_todos(todos):
-    if not todos:
+    display = get_sorted_todos(todos)
+    if not display:
         out_warn("（暂无待办事项）")
         return
-    for i, item in enumerate(todos, 1):
+    for i, item in enumerate(display, 1):
         print(format_item(i, item))
 
 def quit():
@@ -74,6 +90,30 @@ def save_data(todos):
     """把待办事项写回 data.json。"""
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(todos, f, ensure_ascii=False, indent=2)
+
+def load_settings():
+    """读取 settings.json，缺失或损坏时返回默认设置。"""
+    settings = dict(DEFAULT_SETTINGS)
+    if not os.path.exists(SETTINGS_FILE):
+        return settings
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            for key in DEFAULT_SETTINGS:
+                if key in data:
+                    settings[key] = data[key]
+    except (json.JSONDecodeError, OSError):
+        out_warn("警告：settings.json 读取失败，将使用默认设置。")
+    if settings.get("sort") not in SORT_LABELS:
+        settings["sort"] = SORT_NONE
+    return settings
+
+
+def save_settings(settings):
+    """把设置写回 settings.json。"""
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+        json.dump(settings, f, ensure_ascii=False, indent=2)
 
 
 # ----------------------------------------------------------------------
@@ -159,6 +199,23 @@ def format_item(index, item):
             parts.append(f"{label}：{item.get(field, '')}")
     return f"[{index}] " + " | ".join(parts)
 
+def _date_key(item):
+    """排序键：把 due_date 转成 (年, 月, 日)；缺失日期的条目排到最后。"""
+    d = item.get("due_date")
+    if isinstance(d, dict) and d:
+        return (d.get("year", 0), d.get("month", 0), d.get("day", 0))
+    return (9999, 12, 31)
+
+
+def get_sorted_todos(todos):
+    """按当前设置返回排序后的待办事项副本（不修改原列表）。"""
+    mode = SETTINGS.get("sort", SORT_NONE)
+    if mode == SORT_ASC:
+        return sorted(todos, key=_date_key)
+    if mode == SORT_DESC:
+        return sorted(todos, key=_date_key, reverse=True)
+    return list(todos)
+
 # ----------------------------------------------------------------------
 # 具体操作
 # ----------------------------------------------------------------------
@@ -193,19 +250,31 @@ def add_todo(todos):
 def delete_todo(todos):
     """删除一条待办事项。"""
     out_info("\n--- 删除待办事项 ---")
+    if not todos:
+        out_warn("（暂无待办事项）")
+        return
     print_todos(todos)
-    idx = prompt_index(len(todos))
-    removed = todos.pop(idx - 1)
+    display = get_sorted_todos(todos)
+    idx = prompt_index(len(display))
+    target = display[idx - 1]
+    for i, t in enumerate(todos):
+        if t is target:
+            todos.pop(i)
+            break
     save_data(todos)
-    out_info(f"已删除：{removed.get('name', '')}")
+    out_info(f"已删除：{target.get('name', '')}")
 
 
 def modify_todo(todos):
     """更改一条待办事项的字段内容。"""
     out_info("\n--- 更改待办事项 ---")
+    if not todos:
+        out_warn("（暂无待办事项）")
+        return
     print_todos(todos)
-    idx = prompt_index(len(todos))
-    item = todos[idx - 1]
+    display = get_sorted_todos(todos)
+    idx = prompt_index(len(display))
+    item = display[idx - 1]
 
     for field, label, ftype, required in ITEM_FIELDS:
         if ftype == "date":
@@ -248,13 +317,44 @@ def modify_menu(todos):
         elif choice == "d":
             return
 
+def sort_menu():
+    """选择排序方式。"""
+    options = [
+        ("a", SORT_LABELS[SORT_NONE]),
+        ("b", SORT_LABELS[SORT_ASC]),
+        ("c", SORT_LABELS[SORT_DESC]),
+    ]
+    out_info("\n--- 排序方式 ---")
+    show_menu(options)
+    choice = prompt_choice(options)
+    SETTINGS["sort"] = {"a": SORT_NONE, "b": SORT_ASC, "c": SORT_DESC}[choice]
+    save_settings(SETTINGS)
+    out_info(f"排序方式已设为：{SORT_LABELS[SETTINGS['sort']]}")
+
+
+def settings_menu():
+    """设置子菜单。"""
+    options = [
+        ("a", "设置排序方式"),
+        ("b", "返回主菜单"),
+    ]
+    while True:
+        out_info("\n=== 设置 ===")
+        print(f"当前排序方式：{SORT_LABELS[SETTINGS['sort']]}")
+        show_menu(options)
+        choice = prompt_choice(options)
+        if choice == "a":
+            sort_menu()
+        elif choice == "b":
+            return
 
 def main_menu(todos):
     """主菜单。"""
     options = [
         ("a", "查看待办事项"),
         ("b", "修改待办事项"),
-        ("c", "退出"),
+        ("c", "设置"),
+        ("d", "退出"),
     ]
     while True:
         out_info("\n=== 待办事项 ===")
@@ -265,10 +365,13 @@ def main_menu(todos):
         elif choice == "b":
             modify_menu(todos)
         elif choice == "c":
+            settings_menu()
+        elif choice == "d":
             quit()
 
 
 def main():
+    SETTINGS.update(load_settings())
     todos = load_data()
 
     try:
