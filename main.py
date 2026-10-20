@@ -13,6 +13,7 @@
 import json
 import os
 import re
+import sys
 from termcolor import colored
 from datetime import datetime, date
 
@@ -46,6 +47,10 @@ def print_todos(todos):
         return
     for i, item in enumerate(todos, 1):
         print(format_item(i, item))
+
+def quit():
+    out_info("\n再见！")
+    sys.exit(0)
 
 
 # ----------------------------------------------------------------------
@@ -260,13 +265,16 @@ def main_menu(todos):
         elif choice == "b":
             modify_menu(todos)
         elif choice == "c":
-            out_info("再见！")
-            return
+            quit()
 
 
 def main():
     todos = load_data()
-    main_menu(todos)
+
+    try:
+        main_menu(todos)
+    except KeyboardInterrupt:
+        quit()
 
 
 if __name__ == "__main__":
